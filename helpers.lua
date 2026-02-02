@@ -1,5 +1,5 @@
 --[[
-Copyright: Ren Tatsumoto and contributors
+Copyright: Ajatt-Tools and contributors; https://github.com/Ajatt-Tools
 License: GNU GPL, version 3 or later; http://www.gnu.org/licenses/gpl.html
 
 Various helper functions.
@@ -148,10 +148,16 @@ this.remove_newlines = function(str)
     return str:gsub('[\n\r]+', ' ')
 end
 
+this.normalize_spaces = function(str)
+    -- replace sequences of ASCII spaces or full-width ideographic spaces with a single ASCII space
+    return str:gsub('　+', ' '):gsub('  +', " ")
+end
+
 this.trim = function(str)
     str = this.remove_leading_trailing_spaces(str)
     str = this.remove_text_in_parentheses(str)
     str = this.remove_newlines(str)
+    str = this.normalize_spaces(str)
     return str
 end
 
@@ -317,6 +323,83 @@ this.assert_equals = function(actual, expected)
     end
 end
 
+this.deep_copy = function(obj, seen)
+    -- Handle non-tables and previously-seen tables.
+    if type(obj) ~= 'table' then
+        return obj
+    end
+    if seen and seen[obj] then
+        return seen[obj]
+    end
+
+    -- New table; mark it as seen and copy recursively.
+    local s = seen or {}
+    local res = {}
+    s[obj] = res
+    for k, v in pairs(obj) do
+        res[this.deep_copy(k, s)] = this.deep_copy(v, s)
+    end
+    return setmetatable(res, getmetatable(obj))
+end
+
+this.shallow_copy = function(from, to)
+    if type(from) ~= 'table' then
+        return from
+    end
+    to = to or {}
+    for key, value in pairs(from) do
+        to[key] = value
+    end
+    return to
+end
+
+this.maybe_require = function(module_name)
+    -- ~/.config/mpv/scripts/ and the mpvacious dir
+    local parent, child = utils.split_path(mp.get_script_directory())
+    -- ~/.config/mpv/ and "scripts"
+    parent, child = utils.split_path(parent:gsub("/$", ""))
+    -- ~/.config/mpv/subs2srs_sub_filter
+    local external_scripts_path = utils.join_path(parent, "subs2srs_sub_filter")
+
+    local search_template = external_scripts_path .. "/?.lua;"
+    local module_path = package.searchpath(module_name, search_template)
+
+    if not module_path then
+        return nil
+    end
+
+    local original_package_path = package.path
+    package.path = search_template .. package.path
+
+    local ok, loaded_module = pcall(require, module_name)
+
+    package.path = original_package_path
+
+    if not ok then
+        error(
+                string.format(
+                        "Failed to load module '%s' from '%s'. Error: %s",
+                        module_name,
+                        module_path,
+                        tostring(loaded_module)
+                )
+        )
+    end
+
+    return loaded_module
+end
+
+this.combine_lists = function(...)
+    -- take many lists and output one list.
+    local output = {}
+    for _, list in ipairs({ ... }) do
+        for _, item in ipairs(list) do
+            table.insert(output, item)
+        end
+    end
+    return output
+end
+
 this.run_tests = function()
     this.assert_equals(this.is_substr("abcd", "bc"), true)
     this.assert_equals(this.is_substr("abcd", "xyz"), false)
@@ -342,25 +425,13 @@ this.run_tests = function()
         local _, _, episode_num = this.get_episode_number(filename)
         this.assert_equals(episode_num, expected)
     end
-end
 
-this.deep_copy = function(obj, seen)
-    -- Handle non-tables and previously-seen tables.
-    if type(obj) ~= 'table' then
-        return obj
-    end
-    if seen and seen[obj] then
-        return seen[obj]
-    end
+    this.assert_equals(this.combine_lists({ 1, 2 }, { 3 }, {}, { 4, 5 }), { 1, 2, 3, 4, 5 })
 
-    -- New table; mark it as seen and copy recursively.
-    local s = seen or {}
-    local res = {}
-    s[obj] = res
-    for k, v in pairs(obj) do
-        res[this.deep_copy(k, s)] = this.deep_copy(v, s)
-    end
-    return setmetatable(res, getmetatable(obj))
+    local t1 = {1,2,3}
+    local t2 = {3,4,5}
+    this.shallow_copy(t1, t2)
+    this.assert_equals(t2, t1)
 end
 
 return this

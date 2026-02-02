@@ -1,5 +1,5 @@
 --[[
-Copyright: Ren Tatsumoto and contributors
+Copyright: Ajatt-Tools and contributors; https://github.com/Ajatt-Tools
 License: GNU GPL, version 3 or later; http://www.gnu.org/licenses/gpl.html
 
 Creates image and audio filenames compatible with Anki.
@@ -30,8 +30,11 @@ local anki_compatible_length = (function()
             return str:sub(1, limit_bytes)
         end
 
+        -- NOTE: since MacOS's awk currently doesn't support split UTF-8 char correctly,
+        -- we should call gawk instead.
+        -- On GNU/Linux, awk is an alias for gawk.
         local ret = h.subprocess {
-            'awk',
+            'gawk',
             '-v', string.format('str=%s', str),
             '-v', string.format('limit=%d', limit_chars),
             'BEGIN{print substr(str, 1, limit); exit}'
@@ -50,9 +53,18 @@ end)()
 local make_media_filename = function()
     filename = mp.get_property("filename") -- filename without path
     filename = h.remove_extension(filename)
-    filename = h.remove_filename_text_in_parentheses(filename)
-    filename = h.remove_text_in_brackets(filename)
-    filename = h.remove_special_characters(filename)
+
+    local operations = {
+        h.remove_filename_text_in_parentheses,
+        h.remove_text_in_brackets,
+        h.remove_special_characters
+    }
+    for _, f in ipairs(operations) do
+        local temp_filename = f(filename)
+        if temp_filename ~= "" then
+            filename = temp_filename
+        end
+    end
 end
 
 local function timestamp_range(start_timestamp, end_timestamp, extension)

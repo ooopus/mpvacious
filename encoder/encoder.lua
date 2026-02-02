@@ -1,5 +1,5 @@
 --[[
-Copyright: Ren Tatsumoto and contributors
+Copyright: Ajatt-Tools and contributors; https://github.com/Ajatt-Tools
 License: GNU GPL, version 3 or later; http://www.gnu.org/licenses/gpl.html
 
 Encoder creates audio clips and snapshots, both animated and static.
@@ -243,9 +243,9 @@ end
 
 local function add_filter(filters, filter)
     if #filters == 0 then
-        filters = filter
+        return filter
     else
-        filters = string.format('%s,%s', filters, filter)
+        return string.format('%s,%s', filters, filter)
     end
 end
 
@@ -262,29 +262,30 @@ local function separate_filters(filters, new_args, args)
             expect_filter = true
         else
             if expect_filter then
-                add_filter(filters, args[i])
+                filters = add_filter(filters, args[i])
             else
                 table.insert(new_args, args[i])
             end
             expect_filter = false
         end
     end
+    return filters
 end
 
 ffmpeg.append_user_audio_args = function(args)
     local new_args = {}
     local filters = ''
 
-    separate_filters(filters, new_args, args)
+    filters = separate_filters(filters, new_args, args)
     if self.config.tie_volumes then
-        add_filter(filters, string.format("volume=%.1f", mp.get_property_native('volume') / 100.0))
+        filters = add_filter(filters, string.format("volume=%.1f", mp.get_property_native('volume') / 100.0))
     end
 
     local user_args = {}
     for arg in string.gmatch(self.config.ffmpeg_audio_args, "%S+") do
         table.insert(user_args, arg)
     end
-    separate_filters(filters, new_args, user_args)
+    filters = separate_filters(filters, new_args, user_args)
 
     if #filters > 0 then
         table.insert(new_args, '-af')
@@ -297,7 +298,7 @@ ffmpeg.make_audio_args = function(
     source_path, output_path, start_timestamp, end_timestamp, args_consumer
 )
     local audio_track = h.get_active_track('audio')
-    local audio_track_id = audio_track['ff-index']
+    local audio_track_id = audio_track and audio_track['ff-index'] or 'a'
 
     if audio_track and audio_track.external == true then
         source_path = audio_track['external-filename']
@@ -673,10 +674,11 @@ local toggle_animation = function()
     h.notify("Animation " .. (self.config.animated_snapshot_enabled and "enabled" or "disabled"), "info", 2)
 end
 
-local init = function(config)
+local init = function(cfg_mgr)
     -- Sets the module to its preconfigured status
-    self.config = config
-    self.encoder = config.use_ffmpeg and ffmpeg or mpv
+    cfg_mgr.fail_if_not_ready()
+    self.config = cfg_mgr.config()
+    self.encoder = self.config.use_ffmpeg and ffmpeg or mpv
 end
 
 local set_output_dir = function(dir_path)
@@ -685,16 +687,16 @@ local set_output_dir = function(dir_path)
     self.output_dir_path = dir_path
 end
 
-local create_job = function(type, sub, audio_padding)
+local create_job = function(job_type, sub, audio_padding)
     local current_timestamp, on_finish_fn
     local job = {}
-    if type == 'snapshot' and h.has_video_track() then
+    if job_type == 'snapshot' and h.has_video_track() and not h.is_empty(self.config.image_field) then
         current_timestamp = mp.get_property_number("time-pos", 0)
         job.filename = make_snapshot_filename(sub['start'], sub['end'], current_timestamp)
         job.run_async = function()
             create_snapshot(sub['start'], sub['end'], current_timestamp, job.filename, on_finish_fn)
         end
-    elseif type == 'audioclip' and h.has_audio_track() then
+    elseif job_type == 'audioclip' and h.has_audio_track() and not h.is_empty(self.config.audio_field) then
         job.filename = make_audio_filename(sub['start'], sub['end'])
         job.run_async = function()
             create_audio(sub['start'], sub['end'], job.filename, audio_padding, on_finish_fn)
@@ -702,7 +704,7 @@ local create_job = function(type, sub, audio_padding)
     else
         job.filename = nil
         job.run_async = function()
-            print(type .. " will not be created.")
+            print(job_type .. " will not be created.")
             if type(on_finish_fn) == 'function' then
                 on_finish_fn()
             end

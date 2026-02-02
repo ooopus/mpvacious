@@ -1,5 +1,5 @@
 --[[
-Copyright: Ren Tatsumoto and contributors
+Copyright: Ajatt-Tools and contributors; https://github.com/Ajatt-Tools
 License: GNU GPL, version 3 or later; http://www.gnu.org/licenses/gpl.html
 
 Menu for mpvacious
@@ -23,8 +23,9 @@ function Menu:new(o)
 end
 
 function Menu:with_update(params)
-    return function()
-        local status, error = pcall(h.unpack(params))
+    return function(...)
+        local to_call = h.combine_lists(params, { ... })
+        local status, error = pcall(h.unpack(to_call))
         if not status then
             msg['error'](error)
         end
@@ -37,7 +38,9 @@ function Menu:make_osd()
 end
 
 function Menu:update()
-    if self.active == false then return end
+    if self.active == false then
+        return
+    end
     self.overlay.data = self:make_osd():get_text()
     self.overlay:update()
 end
