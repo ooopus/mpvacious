@@ -59,7 +59,7 @@ end
 local function set_video_format()
     if self.config.snapshot_format == 'avif' then
         self.config.snapshot_extension = '.avif'
-        self.config.snapshot_codec = 'libaom-av1'
+        self.config.snapshot_codec = 'av1_qsv '
     elseif self.config.snapshot_format == 'webp' then
         self.config.snapshot_extension = '.webp'
         self.config.snapshot_codec = 'libwebp'
@@ -72,7 +72,7 @@ local function set_video_format()
     -- The user has no choice on this. Same logic for avif.
     if self.config.animated_snapshot_format == 'avif' then
         self.config.animated_snapshot_extension = '.avif'
-        self.config.animated_snapshot_codec = 'libaom-av1'
+        self.config.animated_snapshot_codec = 'av1_qsv '
     else
         self.config.animated_snapshot_extension = '.webp'
         self.config.animated_snapshot_codec = 'libwebp'
